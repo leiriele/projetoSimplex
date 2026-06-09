@@ -1,79 +1,98 @@
 import React, { useMemo, useState } from "react";
-import { geneticAssignment } from "./geneticAssignment"; // ajuste o caminho
+import {
+  geneticAssignment,
+  ILPProblem,
+  ILPSolution,
+  solveIntegerLinearProgram,
+  AssignmentResult,
+} from "./geneticAssignment";
 
 interface GeneticAlgorithmProps {
-  fileData: number[][] | null; // matriz n×n (custos)
+  fileData: number[][] | null;
+  problem?: ILPProblem | null;
 }
 
-const GeneticAlgorithm: React.FC<GeneticAlgorithmProps> = ({ fileData }) => {
-  const [resultado, setResultado] = useState<{ perm: number[]; cost: number } | null>(null);
+const GeneticAlgorithm: React.FC<GeneticAlgorithmProps> = ({ fileData, problem }) => {
+  const [assignmentResult, setAssignmentResult] = useState<AssignmentResult | null>(null);
+  const [ilpResult, setIlpResult] = useState<ILPSolution | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
 
-  // Parâmetros (ajuste conforme n)
   const options = useMemo(
     () => ({
-      populationSize: 300,
-      generations: 1500,
-      crossoverRate: 0.9,
+      populationSize: 200,
+      generations: 800,
+      crossoverRate: 0.85,
       mutationRate: 0.2,
-      elitism: 10,
+      elitism: 8,
       tournamentSize: 4,
-      localSearchSwaps: 30,
+      localSearchSwaps: 15,
+      penaltyWeight: 1000,
     }),
     []
   );
 
   const handleRunAlgorithm = () => {
     setError(null);
-    setResultado(null);
+    setAssignmentResult(null);
+    setIlpResult(null);
 
-    if (!fileData || fileData.length === 0) {
-      setError("Nenhum arquivo carregado.");
+    if (fileData && fileData.length > 0) {
+      const matrix = fileData.map((row) => row.map((v) => Number(v)));
+      const n = matrix.length;
+      const isSquare = matrix.every((row) => row.length === n);
+
+      if (!isSquare) {
+        setError("A matriz precisa ser quadrada (n x n) para o GA de atribuição.");
+        return;
+      }
+
+      setRunning(true);
+      try {
+        const result = geneticAssignment(matrix, {
+          populationSize: options.populationSize,
+          generations: options.generations,
+          crossoverRate: options.crossoverRate,
+          mutationRate: options.mutationRate,
+          elitism: options.elitism,
+          tournamentSize: options.tournamentSize,
+        });
+        setAssignmentResult(result);
+      } catch (e: any) {
+        setError(e?.message ?? "Erro ao rodar o GA de atribuição.");
+      } finally {
+        setRunning(false);
+      }
       return;
     }
 
-    // Sanitiza (remove linhas vazias e converte pra número)
-    const matrix = fileData
-      .filter((row) => Array.isArray(row) && row.length > 0)
-      .map((row) => row.map((v) => Number(v)));
-
-    const n = matrix.length;
-    const isSquare = matrix.every((row) => row.length === n);
-
-    if (!isSquare) {
-      setError(`A matriz precisa ser quadrada (n×n). Recebi ${n} linhas e larguras diferentes.`);
+    if (problem) {
+      setRunning(true);
+      try {
+        const result = solveIntegerLinearProgram(problem, options);
+        setIlpResult(result);
+      } catch (e: any) {
+        setError(e?.message ?? "Erro ao rodar o algoritmo.");
+      } finally {
+        setRunning(false);
+      }
       return;
     }
 
-    // ⚠️ Proteção simples pro browser
-    // (ajuste esse limite conforme a sua máquina)
-    if (n > 2000) {
-      setError(
-        `n=${n} é grande demais para rodar no navegador com matriz completa em memória. ` +
-          `Para n muito grande (ex: 10.000), rode no backend/worker e/ou use leitura por blocos.`
-      );
-      return;
-    }
-
-    setRunning(true);
-    try {
-      const { bestPerm, bestCost } = geneticAssignment(matrix, options);
-      setResultado({ perm: bestPerm, cost: bestCost });
-    } catch (e: any) {
-      setError(e?.message ?? "Erro ao rodar o algoritmo.");
-    } finally {
-      setRunning(false);
-    }
+    setError("Nenhum arquivo ou problema válido foi fornecido.");
   };
 
-  const nInfo = fileData ? `${fileData.length}×${fileData[0]?.length ?? 0}` : "—";
+  const problemInfo = fileData
+    ? `${fileData.length} variáveis, ${fileData[0]?.length ?? 0} colunas` 
+    : problem
+    ? `${problem.n} variáveis, ${problem.m} restrições`
+    : "—";
 
   return (
     <div className="p-4 border rounded-lg shadow-lg max-w-2xl mx-auto">
-      <h2 className="text-xl font-bold mb-2">GA — Problema de Atribuição (n variável)</h2>
+      <h2 className="text-xl font-bold mb-2">GA — Resolução com Algoritmo Genético</h2>
       <div className="text-sm mb-4">
-        Matriz carregada: <b>{nInfo}</b>
+        Problema carregado: <b>{problemInfo}</b>
       </div>
 
       {error && <div className="mb-3 p-2 border rounded bg-red-50 text-red-700">{error}</div>}
@@ -81,16 +100,30 @@ const GeneticAlgorithm: React.FC<GeneticAlgorithmProps> = ({ fileData }) => {
       <button
         className="bg-blue-600 text-white rounded p-2 w-full hover:bg-blue-700 disabled:opacity-60"
         onClick={handleRunAlgorithm}
-        disabled={!fileData || running}
+        disabled={running}
       >
         {running ? "Rodando..." : "Rodar Algoritmo"}
       </button>
 
-      {resultado && (
-        <div className="mt-4 p-3 border rounded">
-          <div className="font-semibold text-lg">Melhor custo: {resultado.cost}</div>
-          <div className="text-sm mt-2 break-words">
-            {resultado.perm.map((col, row) => `${row + 1}→${col + 1}`).join(", ")}
+      {assignmentResult && (
+        <div className="mt-4 p-3 border rounded bg-slate-50">
+          <div className="font-semibold text-lg">Melhor solução de atribuição</div>
+          <div className="mt-2">Custo total: {assignmentResult.bestCost}</div>
+          <div className="text-sm mt-3 break-words">
+            {assignmentResult.bestPerm.map((col, row) => `Linha ${row + 1} → Coluna ${col + 1}`).join(", ")}
+          </div>
+        </div>
+      )}
+
+      {ilpResult && (
+        <div className="mt-4 p-3 border rounded bg-slate-50">
+          <div className="font-semibold text-lg">
+            {ilpResult.feasible ? "Solução factível encontrada" : "Melhor solução encontrada (pode ser inviável)"}
+          </div>
+          <div className="mt-2">Objetivo ({problem?.sense ?? "min"}): {ilpResult.bestObjective}</div>
+          <div>Violação total: {ilpResult.bestViolation}</div>
+          <div className="text-sm mt-3 break-words">
+            {ilpResult.bestSolution.map((value, index) => `x${index + 1}=${value}`).join(", ")}
           </div>
         </div>
       )}

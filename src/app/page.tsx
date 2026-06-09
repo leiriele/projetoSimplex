@@ -5,6 +5,7 @@
 import { useState, ChangeEvent } from "react";
 import GeneticAlgorithm from "@/components/GeneticAlgorithm"; 
 import { parseFileContent } from "@/utils/fileParser"; 
+import type { ILPProblem } from "@/components/geneticAssignment";
 
 export default function Home() {
   const [variables, setVariables] = useState("");
@@ -12,6 +13,7 @@ export default function Home() {
   
   const [file, setFile] = useState<File | null>(null);
   const [parsedData, setParsedData] = useState<number[][] | null>(null);
+  const [parsedProblem, setParsedProblem] = useState<ILPProblem | null>(null);
   const [submitted, setSubmitted] = useState(false);
 
   function handleSubmit() {
@@ -25,17 +27,22 @@ export default function Home() {
           const text = e.target.result;
           const data = parseFileContent(text);
 
-          if (data && data.length > 0) {
-            const numVariables = data[0].length; 
-            const numConstraints = data.length - 1; 
-            if (numVariables > 0 && numConstraints >= 0) {
+          if (data && Array.isArray(data) && data.length > 0) {
+            const numVariables = data[0].length;
+            const numConstraints = data.length;
+            if (numVariables > 0 && numConstraints > 0) {
               setVariables(String(numVariables));
               setConstraints(String(numConstraints));
-              setParsedData(data); 
+              setParsedData(data);
+              setParsedProblem(null);
               setSubmitted(true);
             } else {
-              alert("O arquivo não parece ter um formato válido (variáveis ou restrições insuficientes).");
+              alert("O arquivo não parece ter um formato válido (matriz de números esperada).");
             }
+          } else if (data && typeof data === "object" && data.type === "ilp") {
+            setParsedData(null);
+            setParsedProblem(data);
+            setSubmitted(true);
           } else {
             alert("Não foi possível processar o arquivo. Verifique o formato.");
           }
@@ -120,12 +127,8 @@ export default function Home() {
           </button>
         </div>
 
-        {submitted && Number(variables) > 0 && Number(constraints) >= 0 && (
-          <GeneticAlgorithm 
-            variables={parseInt(variables, 10)} 
-            constraints={parseInt(constraints, 10)} 
-            fileData={parsedData} 
-          />
+        {submitted && (parsedData || parsedProblem) && (
+          <GeneticAlgorithm fileData={parsedData} problem={parsedProblem} />
         )}
       </main>
     </div>
