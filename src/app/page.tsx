@@ -58,8 +58,8 @@ export default function Home() {
       reader.readAsText(file);
 
     } 
-    else if (Number(variables) > 0 && Number(constraints) >= 0) { // Permite 0 restrições
-      setSubmitted(true);
+    else if (Number(variables) > 0 && Number(constraints) >= 0) {
+      alert("Entrada manual de dimensões não completa. Por favor, carregue um arquivo com a matriz ou modelo ILP.");
     } else {
       alert("Por favor, insira números válidos (variáveis > 0, restrições >= 0) ou carregue um arquivo.");
     }
@@ -67,10 +67,7 @@ export default function Home() {
 
   function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
     if (e.target && e.target.files && e.target.files[0]) {
-      const selectedFile = e.target.files[0];
-      setFile(selectedFile);
-      setVariables("");
-      setConstraints("");
+      setFile(e.target.files[0]);
     } else {
       setFile(null);
     }
@@ -95,6 +92,11 @@ export default function Home() {
             accept=".csv, .txt"
             onChange={handleFileChange}
           />
+          <p className="text-sm text-slate-600">
+            Aceita:
+            <br />• matriz quadrada de custos (cada linha com números separados por vírgula/espaco)
+            <br />• modelo ILP explícito começando com <code>ILP</code>
+          </p>
 
           <label className="text-lg font-semibold">Ou insira manualmente:</label>
           
@@ -105,7 +107,7 @@ export default function Home() {
             placeholder="Variáveis de decisão"
             value={variables}
             onChange={(e: ChangeEvent<HTMLInputElement>) => setVariables(e.target.value)}
-            disabled={file !== null} 
+            disabled={true} 
             min="1" 
           />
           <label className="text-lg font-semibold">Quantidade de restrições</label>
@@ -115,13 +117,17 @@ export default function Home() {
             placeholder="Quantidade de restrições"
             value={constraints}
             onChange={(e: ChangeEvent<HTMLInputElement>) => setConstraints(e.target.value)}
-            disabled={file !== null}
+            disabled={true}
             min="0" 
           />
+          <p className="text-sm text-slate-500 italic">
+            (esses campos se preenchem automaticamente ao carregar um arquivo)
+          </p>
 
           <button
-            className="bg-blue-600 text-white rounded p-2 w-full hover:bg-blue-700 mt-2"
+            className="bg-blue-600 text-white rounded p-2 w-full hover:bg-blue-700 mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={handleSubmit}
+            disabled={!file}
           >
             Continuar
           </button>

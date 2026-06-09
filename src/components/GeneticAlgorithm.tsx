@@ -120,7 +120,9 @@ const GeneticAlgorithm: React.FC<GeneticAlgorithmProps> = ({ fileData, problem }
           <div className="font-semibold text-lg">
             {ilpResult.feasible ? "Solução factível encontrada" : "Melhor solução encontrada (pode ser inviável)"}
           </div>
-          <div className="mt-2">Objetivo ({problem?.sense ?? "min"}): {ilpResult.bestObjective}</div>
+          <div className="mt-2">
+            {problem?.sense === "max" ? "📈 Maximizar" : "📉 Minimizar"}: {ilpResult.bestObjective.toFixed(2)}
+          </div>
           <div>Violação total: {ilpResult.bestViolation}</div>
           <div className="text-sm mt-3 break-words">
             {ilpResult.bestSolution.map((value, index) => `x${index + 1}=${value}`).join(", ")}

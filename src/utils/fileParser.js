@@ -20,19 +20,24 @@ export function parseFileContent(text) {
       .filter((value) => !Number.isNaN(value));
 
   const parseILP = () => {
-    if (lines.length < 3) {
+    let startIndex = 0;
+    if (lines[0].trim().toLowerCase() === "ilp") {
+      startIndex = 1;
+    }
+
+    if (lines.length < startIndex + 3) {
       return null;
     }
 
-    const numVariables = parseInt(lines[0], 10);
-    const numConstraints = parseInt(lines[1], 10);
+    const numVariables = parseInt(lines[startIndex], 10);
+    const numConstraints = parseInt(lines[startIndex + 1], 10);
     if (!Number.isInteger(numVariables) || numVariables <= 0) {
       return null;
     }
     if (!Number.isInteger(numConstraints) || numConstraints < 0) {
       return null;
     }
-    if (lines.length < 3 + numConstraints) {
+    if (lines.length < startIndex + 3 + numConstraints) {
       return null;
     }
 
@@ -54,7 +59,7 @@ export function parseFileContent(text) {
       };
     };
 
-    const objective = parseObjectiveLine(lines[2]);
+    const objective = parseObjectiveLine(lines[startIndex + 2]);
     if (objective.coefficients.length !== numVariables) {
       return null;
     }
@@ -91,7 +96,7 @@ export function parseFileContent(text) {
 
     const constraints = [];
     for (let i = 0; i < numConstraints; i += 1) {
-      const parsed = parseConstraintLine(lines[3 + i], numVariables);
+      const parsed = parseConstraintLine(lines[startIndex + 3 + i], numVariables);
       if (!parsed) {
         return null;
       }
@@ -119,6 +124,41 @@ export function parseFileContent(text) {
 
   if (matrix.length === 0) {
     return null;
+  }
+
+  // Tenta converter matriz simples em um ILP de maximização
+  if (matrix.length > 1) {
+    // Verifica se é um problema de atribuição (matriz quadrada) ou LP com restrições
+    const numVars = matrix[0].length - 1; // última coluna é o RHS
+    const hasRHS = matrix.every((row, idx) => {
+      // Primeira linha (objetivo) pode ter um valor extra
+      // Demais linhas devem ter RHS na última posição
+      return idx === 0 || row.length === numVars + 1;
+    });
+
+    if (hasRHS && matrix.length > 1) {
+      // Formato: primeira linha = objetivo, demais = restrições com RHS
+      const objectiveCoeffs = matrix[0].slice(0, numVars);
+      const constraints = [];
+      
+      for (let i = 1; i < matrix.length; i++) {
+        const row = matrix[i];
+        constraints.push({
+          coefficients: row.slice(0, numVars),
+          sense: "<=",
+          rhs: row[numVars],
+        });
+      }
+
+      return {
+        type: "ilp",
+        n: numVars,
+        m: constraints.length,
+        objective: objectiveCoeffs,
+        sense: "max", // Maximiza por padrão
+        constraints,
+      };
+    }
   }
 
   return matrix;

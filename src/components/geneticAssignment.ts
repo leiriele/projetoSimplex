@@ -102,9 +102,14 @@ function evaluateIndividual(problem: ILPProblem, individual: number[], penaltyWe
     }
   }
 
-  const baseCost = problem.sense === "min" ? objectiveValue : -objectiveValue;
+  // Para MAXIMIZAÇÃO: fitness = objectiveValue - penalty
+  // Para MINIMIZAÇÃO: fitness = objectiveValue + penalty
+  const fitnessValue = problem.sense === "max" 
+    ? objectiveValue - violation * penaltyWeight
+    : objectiveValue + violation * penaltyWeight;
+  
   return {
-    fitness: baseCost + violation * penaltyWeight,
+    fitness: fitnessValue,
     objectiveValue,
     violation,
   };
@@ -177,11 +182,12 @@ function mutateIndividual(individual: number[], bounds: { min: number; max: numb
   return child;
 }
 
-function pickByTournament(population: number[][], fitness: number[], k: number) {
+function pickByTournament(population: number[][], fitness: number[], k: number, sense: "min" | "max" = "min") {
   let bestIndex = randomInt(0, population.length - 1);
   for (let i = 1; i < k; i++) {
     const idx = randomInt(0, population.length - 1);
-    if (fitness[idx] < fitness[bestIndex]) {
+    const isBetter = sense === "max" ? fitness[idx] > fitness[bestIndex] : fitness[idx] < fitness[bestIndex];
+    if (isBetter) {
       bestIndex = idx;
     }
   }
@@ -350,7 +356,7 @@ export function solveIntegerLinearProgram(problem: ILPProblem, opt: GAOptions): 
 
   for (let gen = 0; gen < opt.generations; gen++) {
     const idxs = population.map((_, index) => index);
-    idxs.sort((a, b) => fitness[a] - fitness[b]);
+    idxs.sort((a, b) => problem.sense === "max" ? fitness[b] - fitness[a] : fitness[a] - fitness[b]);
 
     const newPopulation: number[][] = [];
     const newFitness: number[] = [];
@@ -365,8 +371,8 @@ export function solveIntegerLinearProgram(problem: ILPProblem, opt: GAOptions): 
     }
 
     while (newPopulation.length < opt.populationSize) {
-      const parent1 = pickByTournament(population, fitness, opt.tournamentSize);
-      const parent2 = pickByTournament(population, fitness, opt.tournamentSize);
+      const parent1 = pickByTournament(population, fitness, opt.tournamentSize, problem.sense);
+      const parent2 = pickByTournament(population, fitness, opt.tournamentSize, problem.sense);
       let child = crossoverUniform(parent1, parent2, bounds);
 
       if (Math.random() < opt.mutationRate) {
