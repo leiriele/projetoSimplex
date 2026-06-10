@@ -129,16 +129,24 @@ export function parseFileContent(text) {
   // Tenta converter matriz simples em um ILP de maximização
   if (matrix.length > 1) {
     // Verifica se é um problema de atribuição (matriz quadrada) ou LP com restrições
-    const numVars = matrix[0].length - 1; // última coluna é o RHS
-    const hasRHS = matrix.every((row, idx) => {
-      // Primeira linha (objetivo) pode ter um valor extra
-      // Demais linhas devem ter RHS na última posição
-      return idx === 0 || row.length === numVars + 1;
-    });
+    let numVars = matrix[0].length;
+    let objectiveCoeffs = matrix[0];
+    let hasRHS = numVars > 0 && matrix.slice(1).every((row) => row.length === numVars + 1);
+
+    if (!hasRHS && matrix[0].length > 1) {
+      const numVarsWithObjectiveDummy = matrix[0].length - 1;
+      const hasObjectiveDummy =
+        matrix.slice(1).every((row) => row.length === numVarsWithObjectiveDummy + 1);
+
+      if (hasObjectiveDummy) {
+        numVars = numVarsWithObjectiveDummy;
+        objectiveCoeffs = matrix[0].slice(0, numVars);
+        hasRHS = true;
+      }
+    }
 
     if (hasRHS && matrix.length > 1) {
       // Formato: primeira linha = objetivo, demais = restrições com RHS
-      const objectiveCoeffs = matrix[0].slice(0, numVars);
       const constraints = [];
       
       for (let i = 1; i < matrix.length; i++) {

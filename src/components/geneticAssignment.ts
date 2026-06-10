@@ -13,6 +13,7 @@ export type ILPProblem = {
   objective: number[];
   sense: "min" | "max";
   constraints: ILPConstraint[];
+  knownOptimum?: number;
 };
 
 export type GAOptions = {
@@ -31,6 +32,7 @@ export type ILPSolution = {
   bestObjective: number;
   bestViolation: number;
   feasible: boolean;
+  logs?: string[];
 };
 
 export type AssignmentResult = {
@@ -59,6 +61,10 @@ function dot(a: number[], b: number[]) {
 }
 
 function isBetterObjective(current: number, best: number, sense: "min" | "max") {
+  return sense === "min" ? current < best : current > best;
+}
+
+function isBetterFitness(current: number, best: number, sense: "min" | "max") {
   return sense === "min" ? current < best : current > best;
 }
 
@@ -113,6 +119,31 @@ function evaluateIndividual(problem: ILPProblem, individual: number[], penaltyWe
     objectiveValue,
     violation,
   };
+}
+
+type IndividualEvaluation = ReturnType<typeof evaluateIndividual>;
+
+function isBetterCandidate(
+  current: IndividualEvaluation,
+  best: IndividualEvaluation,
+  sense: "min" | "max"
+) {
+  const currentFeasible = current.violation === 0;
+  const bestFeasible = best.violation === 0;
+
+  if (currentFeasible !== bestFeasible) {
+    return currentFeasible;
+  }
+
+  if (currentFeasible && bestFeasible) {
+    return isBetterObjective(current.objectiveValue, best.objectiveValue, sense);
+  }
+
+  if (current.violation !== best.violation) {
+    return current.violation < best.violation;
+  }
+
+  return isBetterFitness(current.fitness, best.fitness, sense);
 }
 
 function repairIndividual(
@@ -188,6 +219,22 @@ function pickByTournament(population: number[][], fitness: number[], k: number, 
     const idx = randomInt(0, population.length - 1);
     const isBetter = sense === "max" ? fitness[idx] > fitness[bestIndex] : fitness[idx] < fitness[bestIndex];
     if (isBetter) {
+      bestIndex = idx;
+    }
+  }
+  return population[bestIndex];
+}
+
+function pickILPByTournament(
+  population: number[][],
+  evaluations: IndividualEvaluation[],
+  k: number,
+  sense: "min" | "max"
+) {
+  let bestIndex = randomInt(0, population.length - 1);
+  for (let i = 1; i < k; i++) {
+    const idx = randomInt(0, population.length - 1);
+    if (isBetterCandidate(evaluations[idx], evaluations[bestIndex], sense)) {
       bestIndex = idx;
     }
   }
@@ -323,7 +370,10 @@ export function solveIntegerLinearProgram(problem: ILPProblem, opt: GAOptions): 
   const bounds = createBounds(problem);
   let population: number[][] = [];
   let fitness: number[] = [];
-  let evaluations: Array<ReturnType<typeof evaluateIndividual>> = [];
+  let evaluations: IndividualEvaluation[] = [];
+  const logs: string[] = [];
+  const startTime = Date.now();
+  const logInterval = Math.max(1, Math.floor(opt.generations / 8));
 
   for (let i = 0; i < opt.populationSize; i++) {
     const individual = randomIndividual(bounds);
@@ -333,9 +383,6 @@ export function solveIntegerLinearProgram(problem: ILPProblem, opt: GAOptions): 
     evaluations.push(evaluation);
   }
 
-  let bestSolution = copyArray(population[0]);
-  let bestObjective = evaluations[0].objectiveValue;
-  let bestViolation = evaluations[0].violation;
   let bestFeasible: { solution: number[]; objective: number; violation: number } | null =
     evaluations[0].violation === 0
       ? { solution: copyArray(population[0]), objective: evaluations[0].objectiveValue, violation: 0 }
@@ -356,14 +403,33 @@ export function solveIntegerLinearProgram(problem: ILPProblem, opt: GAOptions): 
 
   for (let gen = 0; gen < opt.generations; gen++) {
     const idxs = population.map((_, index) => index);
-    idxs.sort((a, b) => problem.sense === "max" ? fitness[b] - fitness[a] : fitness[a] - fitness[b]);
+    idxs.sort((a, b) => {
+      if (isBetterCandidate(evaluations[a], evaluations[b], problem.sense)) {
+        return -1;
+      }
+      if (isBetterCandidate(evaluations[b], evaluations[a], problem.sense)) {
+        return 1;
+      }
+      return 0;
+    });
 
     const newPopulation: number[][] = [];
     const newFitness: number[] = [];
-    const newEvaluations: Array<ReturnType<typeof evaluateIndividual>> = [];
+    const newEvaluations: IndividualEvaluation[] = [];
 
     const eliteCount = Math.min(opt.elitism, opt.populationSize);
+    if (bestFeasible) {
+      const elite = copyArray(bestFeasible.solution);
+      const evaluation = evaluateIndividual(problem, elite, opt.penaltyWeight);
+      newPopulation.push(elite);
+      newFitness.push(evaluation.fitness);
+      newEvaluations.push(evaluation);
+    }
+
     for (let e = 0; e < eliteCount; e++) {
+      if (newPopulation.length >= opt.populationSize) {
+        break;
+      }
       const elite = copyArray(population[idxs[e]]);
       newPopulation.push(elite);
       newFitness.push(fitness[idxs[e]]);
@@ -371,8 +437,8 @@ export function solveIntegerLinearProgram(problem: ILPProblem, opt: GAOptions): 
     }
 
     while (newPopulation.length < opt.populationSize) {
-      const parent1 = pickByTournament(population, fitness, opt.tournamentSize, problem.sense);
-      const parent2 = pickByTournament(population, fitness, opt.tournamentSize, problem.sense);
+      const parent1 = pickILPByTournament(population, evaluations, opt.tournamentSize, problem.sense);
+      const parent2 = pickILPByTournament(population, evaluations, opt.tournamentSize, problem.sense);
       let child = crossoverUniform(parent1, parent2, bounds);
 
       if (Math.random() < opt.mutationRate) {
@@ -403,29 +469,26 @@ export function solveIntegerLinearProgram(problem: ILPProblem, opt: GAOptions): 
     fitness = newFitness;
     evaluations = newEvaluations;
 
-    for (let i = 0; i < population.length; i++) {
-      if (evaluations[i].fitness < fitness[0]) {
-        // track the current best fitness for diagnosis; no action needed here
-      }
-      if (evaluations[i].fitness < fitness[0]) {
-        // no-op
-      }
-    }
-
     const currentBest = evaluations.reduce((best, current, index) => {
-      if (current.fitness < best.evaluation.fitness) {
+      if (isBetterCandidate(current, best.evaluation, problem.sense)) {
         return { evaluation: current, index };
       }
       return best;
     }, { evaluation: evaluations[0], index: 0 });
 
-    if (
-      currentBest.evaluation.violation === 0 &&
-      isBetterObjective(currentBest.evaluation.objectiveValue, bestObjective, problem.sense)
-    ) {
-      bestObjective = currentBest.evaluation.objectiveValue;
-      bestSolution = copyArray(population[currentBest.index]);
-      bestViolation = currentBest.evaluation.violation;
+    if ((gen + 1) % logInterval === 0 || gen === opt.generations - 1) {
+      const bestFeasibleText = bestFeasible
+        ? `${bestFeasible.objective.toFixed(2)} | x = [${bestFeasible.solution.join(", ")}]`
+        : "nenhuma";
+      logs.push(
+        [
+          `Geração ${gen + 1} (${((Date.now() - startTime) / 1000).toFixed(1)}s):`,
+          `Objetivo real = ${currentBest.evaluation.objectiveValue.toFixed(2)}`,
+          `Violação = ${currentBest.evaluation.violation.toFixed(2)}`,
+          `Fitness = ${currentBest.evaluation.fitness.toFixed(2)}`,
+          `Melhor solução viável = ${bestFeasibleText}`,
+        ].join("\n")
+      );
     }
   }
 
@@ -435,11 +498,12 @@ export function solveIntegerLinearProgram(problem: ILPProblem, opt: GAOptions): 
       bestObjective: bestFeasible.objective,
       bestViolation: bestFeasible.violation,
       feasible: true,
+      logs,
     };
   }
 
   const currentBestOverall = evaluations.reduce((best, current, idx) => {
-    if (current.fitness < best.evaluation.fitness) {
+    if (isBetterCandidate(current, best.evaluation, problem.sense)) {
       return { evaluation: current, index: idx };
     }
     return best;
@@ -450,5 +514,6 @@ export function solveIntegerLinearProgram(problem: ILPProblem, opt: GAOptions): 
     bestObjective: currentBestOverall.evaluation.objectiveValue,
     bestViolation: currentBestOverall.evaluation.violation,
     feasible: currentBestOverall.evaluation.violation === 0,
+    logs,
   };
 }
