@@ -1,16 +1,36 @@
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import {
-  geneticAssignment,
+  AssignmentResult,
+  GAOptions,
   ILPProblem,
   ILPSolution,
+  geneticAssignment,
   solveIntegerLinearProgram,
-  AssignmentResult,
 } from "./geneticAssignment";
+import GAParametersCard from "./GAParametersCard";
+import ValidationCard from "./ValidationCard";
+import ResultsCard from "./ResultsCard";
+import OptimizationProcessCard from "./OptimizationProcessCard";
+import GraphVisualizationCard from "./GraphVisualizationCard";
 
 interface GeneticAlgorithmProps {
   fileData: number[][] | null;
   problem?: ILPProblem | null;
 }
+
+type EditableGAOptionKey = "populationSize" | "generations" | "mutationRate";
+type GAOptionErrors = Partial<Record<EditableGAOptionKey, string>>;
+
+const DEFAULT_GA_OPTIONS: GAOptions = {
+  populationSize: 500,
+  generations: 3000,
+  crossoverRate: 0.85,
+  mutationRate: 0.1,
+  elitism: 10,
+  tournamentSize: 4,
+  localSearchSwaps: 15,
+  penaltyWeight: 1000,
+};
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
@@ -24,8 +44,22 @@ function waitForNextPaint() {
   });
 }
 
-function formatLinearExpression(coefficients: number[]) {
-  return coefficients.map((coefficient, index) => `${coefficient}*x${index + 1}`).join(" + ");
+function validateGAOptions(options: GAOptions) {
+  const errors: GAOptionErrors = {};
+
+  if (options.populationSize <= 0) {
+    errors.populationSize = "Informe um valor maior que 0.";
+  }
+
+  if (options.generations <= 0) {
+    errors.generations = "Informe um valor maior que 0.";
+  }
+
+  if (options.mutationRate < 0 || options.mutationRate > 1) {
+    errors.mutationRate = "Use um valor entre 0 e 1.";
+  }
+
+  return errors;
 }
 
 const GeneticAlgorithm: React.FC<GeneticAlgorithmProps> = ({ fileData, problem }) => {
@@ -35,20 +69,21 @@ const GeneticAlgorithm: React.FC<GeneticAlgorithmProps> = ({ fileData, problem }
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [processingTime, setProcessingTime] = useState<number | null>(null);
+  const [options, setOptions] = useState<GAOptions>(DEFAULT_GA_OPTIONS);
+  const [optionErrors, setOptionErrors] = useState<GAOptionErrors>({});
 
-  const options = useMemo(
-    () => ({
-      populationSize: 1000,
-      generations: 3000,
-      crossoverRate: 0.90,
-      mutationRate: 0.10,
-      elitism: 30,
-      tournamentSize: 3,
-      localSearchSwaps: 15,
-      penaltyWeight: 1000,
-    }),
-    []
-  );
+  const handleOptionChange = (key: EditableGAOptionKey, value: number) => {
+    setOptions((current) => {
+      const next = { ...current, [key]: value };
+      setOptionErrors(validateGAOptions(next));
+      return next;
+    });
+  };
+
+  const handleRestoreDefaults = () => {
+    setOptions(DEFAULT_GA_OPTIONS);
+    setOptionErrors({});
+  };
 
   const handleRunAlgorithm = async () => {
     setError(null);
@@ -56,10 +91,18 @@ const GeneticAlgorithm: React.FC<GeneticAlgorithmProps> = ({ fileData, problem }
     setIlpResult(null);
     setProcessingTime(null);
 
+    const currentOptionErrors = validateGAOptions(options);
+    setOptionErrors(currentOptionErrors);
+
+    if (Object.keys(currentOptionErrors).length > 0) {
+      setError("Corrija os parâmetros do algoritmo genético antes de executar.");
+      return;
+    }
+
     if (fileData && fileData.length > 0) {
-      const matrix = fileData.map((row) => row.map((v) => Number(v)));
-      const n = matrix.length;
-      const isSquare = matrix.every((row) => row.length === n);
+      const matrix = fileData.map((row) => row.map((value) => Number(value)));
+      const size = matrix.length;
+      const isSquare = matrix.every((row) => row.length === size);
 
       if (!isSquare) {
         setError("A matriz precisa ser quadrada (n x n) para o GA de atribuição.");
@@ -69,6 +112,7 @@ const GeneticAlgorithm: React.FC<GeneticAlgorithmProps> = ({ fileData, problem }
       setRunning(true);
       await waitForNextPaint();
       const startedAt = performance.now();
+
       try {
         const result = geneticAssignment(matrix, {
           populationSize: options.populationSize,
@@ -78,13 +122,15 @@ const GeneticAlgorithm: React.FC<GeneticAlgorithmProps> = ({ fileData, problem }
           elitism: options.elitism,
           tournamentSize: options.tournamentSize,
         });
+
         setAssignmentResult(result);
         setProcessingTime((performance.now() - startedAt) / 1000);
-      } catch (e: unknown) {
-        setError(getErrorMessage(e, "Erro ao rodar o GA de atribuição."));
+      } catch (errorValue: unknown) {
+        setError(getErrorMessage(errorValue, "Erro ao rodar o GA de atribuição."));
       } finally {
         setRunning(false);
       }
+
       return;
     }
 
@@ -93,16 +139,18 @@ const GeneticAlgorithm: React.FC<GeneticAlgorithmProps> = ({ fileData, problem }
       setIlpLogs([]);
       await waitForNextPaint();
       const startedAt = performance.now();
+
       try {
         const result = solveIntegerLinearProgram(problem, options);
         setIlpResult(result);
         setIlpLogs(result.logs ?? []);
         setProcessingTime((performance.now() - startedAt) / 1000);
-      } catch (e: unknown) {
-        setError(getErrorMessage(e, "Erro ao rodar o algoritmo."));
+      } catch (errorValue: unknown) {
+        setError(getErrorMessage(errorValue, "Erro ao rodar o algoritmo."));
       } finally {
         setRunning(false);
       }
+
       return;
     }
 
@@ -110,136 +158,42 @@ const GeneticAlgorithm: React.FC<GeneticAlgorithmProps> = ({ fileData, problem }
   };
 
   const problemInfo = fileData
-    ? `${fileData.length} variáveis, ${fileData[0]?.length ?? 0} colunas` 
+    ? `${fileData.length} variáveis, ${fileData[0]?.length ?? 0} colunas`
     : problem
-    ? `${problem.n} variáveis, ${problem.m} restrições`
-    : "—";
-
-  const repairStatus = options.localSearchSwaps > 0 ? "Reparo ativado" : "Reparo desativado";
+      ? `${problem.n} variáveis, ${problem.m} restrições`
+      : "—";
 
   return (
-    <div className="p-4 border rounded-lg shadow-lg max-w-2xl mx-auto">
-      <h2 className="text-xl font-bold mb-2">GA — Resolução com Algoritmo Genético</h2>
-      <div className="text-sm mb-4">
-        Problema carregado: <b>{problemInfo}</b>
-      </div>
-
-      {error && <div className="mb-3 p-2 border rounded bg-red-50 text-red-700">{error}</div>}
-
-      <button
-        className="flex w-full items-center justify-center gap-2 rounded bg-blue-600 p-2 text-white hover:bg-blue-700 disabled:cursor-wait disabled:opacity-60"
-        onClick={handleRunAlgorithm}
-        disabled={running}
-      >
-        {running && (
-          <span
-            className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"
-            aria-hidden="true"
-          />
-        )}
-        {running ? "Processando resultados..." : "Rodar Algoritmo"}
-      </button>
-
-      {running && (
-        <div className="mt-3 flex items-center justify-center gap-2 rounded border border-blue-100 bg-blue-50 p-2 text-sm text-blue-700">
-          <span
-            className="h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent"
-            aria-hidden="true"
-          />
-          Calculando melhor solução, objetivo real e violações...
-        </div>
-      )}
-
-      {!running && processingTime !== null && (
-        <div className="mt-3 rounded border border-emerald-100 bg-emerald-50 p-2 text-center text-sm text-emerald-700">
-          Tempo total de processamento: {processingTime.toFixed(2)}s
-        </div>
-      )}
-
-      {assignmentResult && (
-        <div className="mt-4 p-3 border rounded bg-slate-50">
-          <div className="font-semibold text-lg">Melhor solução de atribuição</div>
-          <div className="mt-2">Custo total: {assignmentResult.bestCost}</div>
-          <div className="text-sm mt-3 break-words">
-            {assignmentResult.bestPerm.map((col, row) => `Linha ${row + 1} → Coluna ${col + 1}`).join(", ")}
-          </div>
-        </div>
-      )}
-
-      {ilpResult && (
-        <div className="mt-4 p-3 border rounded bg-slate-50">
-          <div className="font-semibold text-lg">✅ Melhor solução final encontrada pelo GA:</div>
-          <div className="mt-2">
-            {problem?.sense === "max" ? "📈 Maximizar" : "📉 Minimizar"}: {ilpResult.bestObjective.toFixed(2)}
-          </div>
-          <div>Violação total: {ilpResult.bestViolation}</div>
-          <div className="text-sm mt-3 break-words">
-            x = [{ilpResult.bestSolution.map((value, index) => `${value}${index < ilpResult.bestSolution.length - 1 ? ", " : ""}`)}]
-          </div>
-        </div>
-      )}
-
-      {problem && ilpResult && (
-        <div className="mt-4 rounded border bg-slate-50 p-3">
-          <div className="text-lg font-semibold">Detalhes do cálculo</div>
-
-          <div className="mt-3">
-            <div className="font-medium">Função objetivo</div>
-            <div className="text-sm break-words">Z = {formatLinearExpression(problem.objective)}</div>
-          </div>
-
-          <div className="mt-3">
-            <div className="font-medium">Restrições</div>
-            <div className="mt-1 flex flex-col gap-1 text-sm">
-              {problem.constraints.map((constraint, index) => (
-                <div key={index} className="break-words">
-                  R{index + 1}: {formatLinearExpression(constraint.coefficients)} {constraint.sense}{" "}
-                  {constraint.rhs}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-3">
-            <div className="font-medium">Violação</div>
-            <div className="text-sm">
-              {"<="}: violação = soma(max(0, Ax - b))
-              <br />
-              {">="}: violação = soma(max(0, b - Ax))
-              <br />
-              =: violação = soma(abs(Ax - b))
-            </div>
-          </div>
-
-          <div className="mt-3">
-            <div className="font-medium">Fitness</div>
-            <div className="text-sm">
-              Maximização: fitness = objetivo - violação * {options.penaltyWeight}
-              <br />
-              Minimização: fitness = objetivo + violação * {options.penaltyWeight}
-            </div>
-          </div>
-
-          <div className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
-            <div>
-              <span className="font-medium">Cruzamento:</span> {options.crossoverRate}
-            </div>
-            <div>
-              <span className="font-medium">Mutação:</span> {options.mutationRate}
-            </div>
-            <div>
-              <span className="font-medium">Reparo:</span> {repairStatus}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {ilpLogs.length > 0 && (
-        <div className="mt-4 p-3 border rounded bg-slate-50">
-          <div className="font-semibold text-lg">Console/Log</div>
-          <pre className="text-sm whitespace-pre-wrap break-words">{ilpLogs.join("\n")}</pre>
-        </div>
-      )}
+    <div className="space-y-6">
+      <GAParametersCard
+        options={options}
+        errors={optionErrors}
+        onChange={handleOptionChange}
+        onRestoreDefaults={handleRestoreDefaults}
+      />
+      <ValidationCard
+        problemInfo={problemInfo}
+        error={error}
+        running={running}
+        processingTime={processingTime}
+        onRunAlgorithm={handleRunAlgorithm}
+      />
+      <OptimizationProcessCard
+        running={running}
+        processingTime={processingTime}
+        ilpLogs={ilpLogs}
+        assignmentResult={assignmentResult}
+        ilpResult={ilpResult}
+        options={options}
+      />
+      <GraphVisualizationCard assignmentResult={assignmentResult} ilpResult={ilpResult} problem={problem} />
+      <ResultsCard
+        assignmentResult={assignmentResult}
+        ilpResult={ilpResult}
+        ilpLogs={ilpLogs}
+        problem={problem}
+        options={options}
+      />
     </div>
   );
 };

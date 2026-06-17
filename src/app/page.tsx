@@ -2,8 +2,10 @@
 
 "use client";
 
-import { useState, ChangeEvent } from "react";
+import { ChangeEvent, useState } from "react";
 import GeneticAlgorithm from "@/components/GeneticAlgorithm";
+import UploadCard from "@/components/UploadCard";
+import DataPreviewCard from "@/components/DataPreviewCard";
 import { parseFileContent } from "@/utils/fileParser";
 import type { ConstraintSense, ILPProblem } from "@/components/geneticAssignment";
 
@@ -55,14 +57,15 @@ export default function Home() {
 
     const reader = new FileReader();
 
-    reader.onload = (e: ProgressEvent<FileReader>) => {
-      if (e.target && typeof e.target.result === "string") {
-        const text = e.target.result;
+    reader.onload = (event: ProgressEvent<FileReader>) => {
+      if (event.target && typeof event.target.result === "string") {
+        const text = event.target.result;
         const data = parseFileContent(text);
 
         if (data && Array.isArray(data) && data.length > 0) {
           const numVariables = data[0].length;
           const numConstraints = data.length;
+
           if (numVariables > 0 && numConstraints > 0) {
             setVariables(String(numVariables));
             setConstraints(String(numConstraints));
@@ -93,9 +96,9 @@ export default function Home() {
     reader.readAsText(file);
   }
 
-  function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
-    if (e.target.files?.[0]) {
-      setFile(e.target.files[0]);
+  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    if (event.target.files?.[0]) {
+      setFile(event.target.files[0]);
       setManualError(null);
       return;
     }
@@ -128,7 +131,7 @@ export default function Home() {
   }
 
   function updateObjectiveCoefficient(index: number, value: string) {
-    setObjectiveCoefficients((current) => current.map((item, i) => (i === index ? value : item)));
+    setObjectiveCoefficients((current) => current.map((item, itemIndex) => (itemIndex === index ? value : item)));
   }
 
   function updateConstraintCoefficient(row: number, column: number, value: string) {
@@ -142,11 +145,11 @@ export default function Home() {
   }
 
   function updateConstraintSense(index: number, value: ConstraintSense) {
-    setConstraintSenses((current) => current.map((item, i) => (i === index ? value : item)));
+    setConstraintSenses((current) => current.map((item, itemIndex) => (itemIndex === index ? value : item)));
   }
 
   function updateConstraintRhs(index: number, value: string) {
-    setConstraintRhs((current) => current.map((item, i) => (i === index ? value : item)));
+    setConstraintRhs((current) => current.map((item, itemIndex) => (itemIndex === index ? value : item)));
   }
 
   function handleBuildManualProblem() {
@@ -203,178 +206,49 @@ export default function Home() {
   }
 
   return (
-    <div className="grid min-h-screen grid-rows-[20px_1fr_20px] items-center justify-items-center gap-16 p-8 pb-20 font-[family-name:var(--font-geist-sans)] sm:p-20">
-      <main className="row-start-2 flex w-full max-w-5xl flex-col items-center gap-8 sm:items-start">
-        <h1 className="text-6xl font-bold">OptiGen</h1>
+    <div className="min-h-screen bg-[#f8fafc] px-4 py-8">
+      <main className="mx-auto w-full max-w-6xl">
+        <header className="mb-8 text-center">
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-5xl">
+            Otimização de Problemas de Programação Linear Inteira
+          </h1>
+          <p className="mt-3 text-base text-slate-600 sm:text-lg">
+            Upload, análise e visualização gráfica de soluções
+          </p>
+        </header>
 
-        <div className="flex w-full flex-col gap-4">
-          <div className="w-full max-w-xl">
-            <label className="text-lg font-semibold">Carregar arquivo (CSV ou TXT)</label>
-            <input
-              type="file"
-              className="mt-2 w-full rounded border p-2 text-gray-500 file:mr-4 file:rounded file:border-0 file:bg-blue-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-blue-700 hover:file:bg-blue-100"
-              accept=".csv, .txt"
-              onChange={handleFileChange}
-            />
-            <p className="mt-2 text-sm text-slate-600">
-              Aceita matriz quadrada de custos ou modelo ILP com objetivo e restrições.
-            </p>
-            <button
-              className="mt-3 w-full rounded bg-blue-600 p-2 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-              onClick={handleSubmit}
-              disabled={!file}
-            >
-              Continuar com arquivo
-            </button>
-          </div>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <UploadCard
+            file={file}
+            variables={variables}
+            constraints={constraints}
+            objectiveSense={objectiveSense}
+            objectiveCoefficients={objectiveCoefficients}
+            constraintCoefficients={constraintCoefficients}
+            constraintSenses={constraintSenses}
+            constraintRhs={constraintRhs}
+            manualFormGenerated={manualFormGenerated}
+            manualError={manualError}
+            onFileChange={handleFileChange}
+            onSubmitFile={handleSubmit}
+            onVariablesChange={setVariables}
+            onConstraintsChange={setConstraints}
+            onGenerateManualForm={handleGenerateManualForm}
+            onObjectiveSenseChange={setObjectiveSense}
+            onObjectiveCoefficientChange={updateObjectiveCoefficient}
+            onConstraintCoefficientChange={updateConstraintCoefficient}
+            onConstraintSenseChange={updateConstraintSense}
+            onConstraintRhsChange={updateConstraintRhs}
+            onBuildManualProblem={handleBuildManualProblem}
+          />
 
-          <div className="w-full border-t pt-4">
-            <div className="text-lg font-semibold">Ou insira manualmente</div>
-
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <label className="flex flex-col gap-1 text-sm font-medium">
-                Quantidade de variáveis de decisão
-                <input
-                  type="number"
-                  className="rounded border p-2 text-black focus:text-blue-600"
-                  placeholder="Variáveis de decisão"
-                  value={variables}
-                  onChange={(e: ChangeEvent<HTMLInputElement>) => setVariables(e.target.value)}
-                  min="1"
-                />
-              </label>
-
-              <label className="flex flex-col gap-1 text-sm font-medium">
-                Quantidade de restrições
-                <input
-                  type="number"
-                  className="rounded border p-2 text-black focus:text-blue-600"
-                  placeholder="Quantidade de restrições"
-                  value={constraints}
-                  onChange={(e: ChangeEvent<HTMLInputElement>) => setConstraints(e.target.value)}
-                  min="1"
-                />
-              </label>
-            </div>
-
-            <button
-              className="mt-3 rounded bg-slate-800 px-4 py-2 text-white hover:bg-slate-900"
-              onClick={handleGenerateManualForm}
-            >
-              Gerar formulário
-            </button>
-
-            {manualError && (
-              <div className="mt-3 rounded border border-red-100 bg-red-50 p-2 text-sm text-red-700">
-                {manualError}
-              </div>
-            )}
-
-            {manualFormGenerated && (
-              <div className="mt-5 flex flex-col gap-5">
-                <div className="rounded border bg-slate-50 p-4">
-                  <div className="mb-3 font-semibold">Função objetivo</div>
-                  <div className="mb-3 flex gap-2">
-                    <button
-                      className={`rounded px-3 py-2 text-sm ${
-                        objectiveSense === "max" ? "bg-blue-600 text-white" : "border bg-white"
-                      }`}
-                      onClick={() => setObjectiveSense("max")}
-                      type="button"
-                    >
-                      Maximizar
-                    </button>
-                    <button
-                      className={`rounded px-3 py-2 text-sm ${
-                        objectiveSense === "min" ? "bg-blue-600 text-white" : "border bg-white"
-                      }`}
-                      onClick={() => setObjectiveSense("min")}
-                      type="button"
-                    >
-                      Minimizar
-                    </button>
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-3 md:grid-cols-4">
-                    {objectiveCoefficients.map((value, index) => (
-                      <label key={index} className="flex flex-col gap-1 text-sm">
-                        c{index + 1}
-                        <input
-                          type="number"
-                          className="rounded border p-2 text-black"
-                          value={value}
-                          onChange={(e) => updateObjectiveCoefficient(index, e.target.value)}
-                        />
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="rounded border bg-slate-50 p-4">
-                  <div className="mb-3 font-semibold">Restrições</div>
-                  <div className="flex flex-col gap-4">
-                    {constraintCoefficients.map((row, rowIndex) => (
-                      <div key={rowIndex} className="rounded border bg-white p-3">
-                        <div className="mb-2 text-sm font-medium">Restrição {rowIndex + 1}</div>
-                        <div className="grid items-end gap-2 sm:grid-cols-3 md:grid-cols-6">
-                          {row.map((value, columnIndex) => (
-                            <label key={columnIndex} className="flex flex-col gap-1 text-sm">
-                              a{columnIndex + 1}
-                              <input
-                                type="number"
-                                className="rounded border p-2 text-black"
-                                value={value}
-                                onChange={(e) =>
-                                  updateConstraintCoefficient(rowIndex, columnIndex, e.target.value)
-                                }
-                              />
-                            </label>
-                          ))}
-                          <label className="flex flex-col gap-1 text-sm">
-                            Tipo
-                            <select
-                              className="rounded border p-2 text-black"
-                              value={constraintSenses[rowIndex]}
-                              onChange={(e) =>
-                                updateConstraintSense(rowIndex, e.target.value as ConstraintSense)
-                              }
-                            >
-                              <option value="<=">{"<="}</option>
-                              <option value=">=">{">="}</option>
-                              <option value="=">=</option>
-                            </select>
-                          </label>
-                          <label className="flex flex-col gap-1 text-sm">
-                            b
-                            <input
-                              type="number"
-                              className="rounded border p-2 text-black"
-                              value={constraintRhs[rowIndex]}
-                              onChange={(e) => updateConstraintRhs(rowIndex, e.target.value)}
-                            />
-                          </label>
-                        </div>
-                        <div className="mt-2 text-xs text-slate-500">
-                          {row.map((_, index) => `a${index + 1}*x${index + 1}`).join(" + ")}{" "}
-                          {constraintSenses[rowIndex]} b
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <button
-                  className="w-full rounded bg-blue-600 p-2 text-white hover:bg-blue-700"
-                  onClick={handleBuildManualProblem}
-                >
-                  Montar problema
-                </button>
-              </div>
-            )}
-          </div>
+          <DataPreviewCard parsedData={parsedData} parsedProblem={parsedProblem} />
         </div>
 
         {submitted && (parsedData || parsedProblem) && (
-          <GeneticAlgorithm fileData={parsedData} problem={parsedProblem} />
+          <div className="mt-6">
+            <GeneticAlgorithm fileData={parsedData} problem={parsedProblem} />
+          </div>
         )}
       </main>
     </div>
