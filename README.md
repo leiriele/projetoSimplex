@@ -29,6 +29,30 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
+## ILP model input
+
+This project now supports two input formats:
+
+- `CSV`/`TXT` as a square cost matrix for the GA assignment solver
+- explicit `ILP` model files starting with `ILP` for a generic integer linear programming problem
+
+Example ILP format:
+
+```
+ILP
+7
+4
+min: 1 2 3 4 5 6 7
+1 0 1 0 0 0 0 <= 5
+0 1 0 1 0 0 0 >= 2
+1 1 0 0 1 0 0 = 3
+0 0 1 1 0 1 0 <= 4
+```
+
+The parser supports constraints with `<=`, `>=`, or `=` and the objective can start with `min:` or `max:`.
+
+A sample ILP file is included as `ilp_example.txt`.
+
 ## Deploy on Vercel
 
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.

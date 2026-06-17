@@ -24,6 +24,10 @@ function waitForNextPaint() {
   });
 }
 
+function formatLinearExpression(coefficients: number[]) {
+  return coefficients.map((coefficient, index) => `${coefficient}*x${index + 1}`).join(" + ");
+}
+
 const GeneticAlgorithm: React.FC<GeneticAlgorithmProps> = ({ fileData, problem }) => {
   const [assignmentResult, setAssignmentResult] = useState<AssignmentResult | null>(null);
   const [ilpResult, setIlpResult] = useState<ILPSolution | null>(null);
@@ -111,6 +115,8 @@ const GeneticAlgorithm: React.FC<GeneticAlgorithmProps> = ({ fileData, problem }
     ? `${problem.n} variáveis, ${problem.m} restrições`
     : "—";
 
+  const repairStatus = options.localSearchSwaps > 0 ? "Reparo ativado" : "Reparo desativado";
+
   return (
     <div className="p-4 border rounded-lg shadow-lg max-w-2xl mx-auto">
       <h2 className="text-xl font-bold mb-2">GA — Resolução com Algoritmo Genético</h2>
@@ -169,6 +175,61 @@ const GeneticAlgorithm: React.FC<GeneticAlgorithmProps> = ({ fileData, problem }
           <div>Violação total: {ilpResult.bestViolation}</div>
           <div className="text-sm mt-3 break-words">
             x = [{ilpResult.bestSolution.map((value, index) => `${value}${index < ilpResult.bestSolution.length - 1 ? ", " : ""}`)}]
+          </div>
+        </div>
+      )}
+
+      {problem && ilpResult && (
+        <div className="mt-4 rounded border bg-slate-50 p-3">
+          <div className="text-lg font-semibold">Detalhes do cálculo</div>
+
+          <div className="mt-3">
+            <div className="font-medium">Função objetivo</div>
+            <div className="text-sm break-words">Z = {formatLinearExpression(problem.objective)}</div>
+          </div>
+
+          <div className="mt-3">
+            <div className="font-medium">Restrições</div>
+            <div className="mt-1 flex flex-col gap-1 text-sm">
+              {problem.constraints.map((constraint, index) => (
+                <div key={index} className="break-words">
+                  R{index + 1}: {formatLinearExpression(constraint.coefficients)} {constraint.sense}{" "}
+                  {constraint.rhs}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-3">
+            <div className="font-medium">Violação</div>
+            <div className="text-sm">
+              {"<="}: violação = soma(max(0, Ax - b))
+              <br />
+              {">="}: violação = soma(max(0, b - Ax))
+              <br />
+              =: violação = soma(abs(Ax - b))
+            </div>
+          </div>
+
+          <div className="mt-3">
+            <div className="font-medium">Fitness</div>
+            <div className="text-sm">
+              Maximização: fitness = objetivo - violação * {options.penaltyWeight}
+              <br />
+              Minimização: fitness = objetivo + violação * {options.penaltyWeight}
+            </div>
+          </div>
+
+          <div className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
+            <div>
+              <span className="font-medium">Cruzamento:</span> {options.crossoverRate}
+            </div>
+            <div>
+              <span className="font-medium">Mutação:</span> {options.mutationRate}
+            </div>
+            <div>
+              <span className="font-medium">Reparo:</span> {repairStatus}
+            </div>
           </div>
         </div>
       )}
